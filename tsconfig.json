@@ -1,0 +1,13 @@
+{
+    "compilerOptions": {
+      "target": "es2020",
+      ///"module": "esnext",
+      "module": "es2020",  
+      "moduleResolution": "node",
+      "strict": true,
+      "esModuleInterop": true
+      // ... your other options
+    },
+    "include":["app.ts","webapp.ts"],
+
+}
