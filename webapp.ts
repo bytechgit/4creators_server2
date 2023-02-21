@@ -184,6 +184,142 @@ class WebApp {
     });
 
 
+    
+    app.post("/getSearchResults2", async (req: Request, res: Response): Promise<void> => {
+      if (req.body.userid && req.body.limit!= null &&  req.body.offset != null && req.body.netnew != null )
+      {
+      
+        let map:String | Number[] = [];
+       // let dmap:String | Number[] = [];
+
+        console.log(map);
+      let wherequery: string = "";
+      let query: string = "SELECT  Contacts.*, Locations.name as location, Industries.name as industry,\
+      (Contacts.email IN (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
+        INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
+        WHERE Users.id = ?)) as saved, \
+       0+";
+       //map.push(req.body.userid);
+
+      if(req.body.companyName != null)
+      {
+        query +="MATCH(companyname) AGAINST (? IN BOOLEAN MODE) + ";
+        wherequery += "MATCH(companyname) AGAINST (? IN BOOLEAN MODE) AND ";
+        map.push(req.body.companyName);
+      }
+      if(req.body.domainName != null)
+      {
+        query +="MATCH(email,weblink) AGAINST (? IN BOOLEAN MODE) + ";
+        wherequery += "MATCH(email,weblink) AGAINST (? IN BOOLEAN MODE) AND ";
+        map.push(req.body.domainName);
+      }
+      if(req.body.keywords != null)
+      {
+        query +="MATCH(keywords) AGAINST (? IN BOOLEAN MODE) + ";
+        wherequery += "MATCH(keywords) AGAINST (? IN BOOLEAN MODE) AND ";
+        map.push(req.body.keywords);
+      }
+      if(req.body.jobTitle != null)
+      {
+        query +="MATCH(jobtitle) AGAINST (? IN BOOLEAN MODE) + ";
+        wherequery += "MATCH(jobtitle) AGAINST (? IN BOOLEAN MODE) AND ";
+        map.push(req.body.jobTitle);
+      }
+      const duplicatemap = [req.body.userid, ...map, ...map];
+
+      if(req.body.locations && (req.body.locations as Number[]).length >0 )
+      {
+        duplicatemap.push(...(req.body.locations as Number[]));
+        map.push(...(req.body.locations as Number[]));
+        wherequery+="Contacts.locationid IN ("+ (req.body.locations as Number[]).map(e=> "?").join(",") +") AND ";
+      }
+      if(req.body.industries  && (req.body.industries as Number[]).length >0 )
+      {
+        duplicatemap.push(...(req.body.industries as Number[]));
+        map.push(...(req.body.industries as Number[]));
+        wherequery+= "Contacts.industryid IN ("+(req.body.industries as Number[]).map(e=> "?").join(",") + ") AND ";
+      }
+
+      if (req.body.netnew == 1) {
+              wherequery+=" Contacts.id NOT IN \
+                (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
+                INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
+                WHERE Users.id = ?) AND ";
+
+              duplicatemap.push(req.body.userid);
+              map.push(req.body.userid);
+      }
+
+
+      query+=" 0 as relevant\
+      FROM    Contacts\
+      INNER  JOIN Locations on Contacts.locationid = Locations.id\
+      LEFT  JOIN Industries on Contacts.industryid = Industries.id\
+      WHERE ";
+      query+= wherequery;
+      // dupliciranje
+      query += " 1 ";
+     // if(&& req.body.sortsize && req.body.sortcontact && req.body.sortcompany)
+     query = query.concat("ORDER BY ");
+     if(req.body.sortsize != null)
+     {
+      query = query.concat(" Contacts.companysize ");
+      query = query.concat(req.body.sortsize == true? " ASC, ":" DESC, ");
+     }
+     if(req.body.sortcompany != null)
+     {
+      query = query.concat(" Contacts.companyname ");
+      query = query.concat(req.body.sortcompany == true? " ASC, ":" DESC, ");
+     }
+     if(req.body.sortcontact != null)
+     {
+      query = query.concat(" Contacts.firstname ");
+      query = query.concat(req.body.sortcontact == true? " ASC, ":" DESC, ");
+     }
+      query = query.concat(" relevant, Contacts.id DESC LIMIT ? OFFSET ? ");
+   //  query += "relevant,Contacts.id DESC LIMIT ? OFFSET ? ";
+
+    //  query = query.concat("ORDER BY relevant,Contacts.id DESC LIMIT ? OFFSET ? ");
+
+      
+      duplicatemap.push(req.body.limit);
+      duplicatemap.push(req.body.offset);
+        console.log(query);
+        console.log(duplicatemap);
+        console.log(map);
+     
+
+
+
+
+        
+
+      if(req.body.offset == 0)
+      {
+       mySqlWeb.execute("SELECT COUNT(*) as numberofrows From Contacts WHERE "+wherequery+ " 1 " ,[...map]).then(([topresult, fields]:any) =>{
+          mySqlWeb.execute(query,duplicatemap).then(([result, fields]) =>{
+            //console.log(result);
+         //   res.send(({...result,numberofrows:topresult[0].numberofrows}));
+         res.send({contacts: result, numberofrows:topresult[0].numberofrows})
+         }).catch(err=> {throw err;});
+       }).catch(err=> {throw err;});
+      }
+      else
+      {
+        mySqlWeb.execute(query,duplicatemap).then(([result,fields]) =>{
+
+          res.send({contacts:result});
+       }).catch(err=> {throw err;});
+      }
+
+       
+      }
+     else {
+            res.status(399).send("[/getSearchResults] Nisu unesena sva polja.");
+          }
+    });
+
+
     app.post("/getSearchResults1", async (req: Request, res: Response): Promise<void> => {
       if (req.body.userid && req.body.limit!= null &&  req.body.offset != null && req.body.netnew != null )
       {
@@ -544,6 +680,21 @@ app.put("/updateUserTokens",
         }).catch(err=> {throw err;});
       } else {
         res.status(399).send("[/updateUserTokens] Nisu unesena sva polja.");
+      }
+    }
+    );
+
+    app.put("/updateContactsListName",
+    async (req: Request, res: Response): Promise<void> => {
+      if (
+        req.body.listid &&
+        req.body.newname
+      ) {
+        mySqlWeb.execute('UPDATE `UserContactLists` SET `listname`= ? WHERE id = ?',[req.body.newname, req.body.listid]).then(([result, fields]) =>{
+        res.send(result);
+        }).catch(err=> {throw err;});
+      } else {
+        res.status(399).send("[/updateContactsListName] Nisu unesena sva polja.");
       }
     }
     );
