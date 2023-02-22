@@ -453,6 +453,9 @@ class WebApp {
                         // console.log(params.flat(1));
                         await conn.execute(query, params.flat(1));
                     }
+                    if (req.body.tokens != null) {
+                        await conn.execute("UPDATE `Users` SET  tokens = tokens - ? where id = ?", [req.body.tokens, req.body.userid]);
+                    }
                     await conn.commit();
                     res.json({ id: result[0].listid });
                 }

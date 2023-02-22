@@ -153,7 +153,7 @@ class WebApp {
     });
 
     app.post("/getContactsByListIds", async (req: Request, res: Response): Promise<void> => {
-      if (req.body.listids)
+      if (req.body.listids )
       {
         mySqlWeb.execute('SELECT Contacts.id, Contacts.firstname, Contacts.lastname, Contacts.email, Contacts.companyname, Contacts.companysize, Contacts.jobtitle,Locations.name as location, Industries.name as industry,ListJoinContacts.listid FROM ListJoinContacts\
         LEFT JOIN Contacts on ListJoinContacts.contactid = Contacts.id\
@@ -590,6 +590,10 @@ class WebApp {
              // console.log(params.flat(1));
              await conn.execute(query,params.flat(1));
             }
+            if(req.body.tokens != null)
+            {
+              await conn.execute("UPDATE `Users` SET  tokens = tokens - ? where id = ?",[req.body.tokens, req.body.userid]);
+            }
             await conn.commit();
             res.json({id:result[0].listid});
           } catch (error) {
@@ -733,11 +737,6 @@ app.put("/updateUserTokens",
       }
     );
 //#endregion    
-
-
-
-
-
 
 
 
