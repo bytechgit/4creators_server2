@@ -136,6 +136,21 @@ class WebApp {
     });
 
 
+    app.get("/getContactsByListId1", async (req: Request, res: Response): Promise<void> => {
+      if (req.query.listid)
+      {
+        mySqlWeb.execute('SELECT AllContactsInLists.contacttype, AllContactsInLists.id, AllContactsInLists.firstname, AllContactsInLists.lastname, AllContactsInLists.email, AllContactsInLists.companyname, AllContactsInLists.companysize, AllContactsInLists.jobtitle, Locations.name as location, Industries.name as industry FROM AllContactsInLists\
+        LEFT JOIN Locations ON AllContactsInLists.locationid = Locations.id\
+        LEFT JOIN Industries ON AllContactsInLists.industryid = Industries.id\
+        where AllContactsInLists.listid = ?',[req.query.listid]).then(([result, fields]) =>{
+         res.send(result);
+      }).catch(err=> {throw err;});
+      }
+     else {
+            res.status(399).send("[/getContactsByListId1] Nisu unesena sva polja.");
+          }
+    });
+
     app.get("/getContactsByListId", async (req: Request, res: Response): Promise<void> => {
       if (req.query.listid)
       {
@@ -149,6 +164,35 @@ class WebApp {
       }
      else {
             res.status(399).send("[/getContactsByListId] Nisu unesena sva polja.");
+          }
+    });
+
+    app.post("/getContactsByListIds1", async (req: Request, res: Response): Promise<void> => {
+      if (req.body.listids )
+      {
+        mySqlWeb.execute('SELECT AllContactsInLists.contacttype, AllContactsInLists.id, AllContactsInLists.firstname, AllContactsInLists.lastname, AllContactsInLists.email, AllContactsInLists.companyname, AllContactsInLists.companysize, AllContactsInLists.jobtitle,Locations.name as location, Industries.name as industry,ListJoinContacts.listid FROM AllContactsInLists\
+        LEFT JOIN Locations ON AllContactsInLists.locationid = Locations.id\
+        LEFT JOIN Industries ON AllContactsInLists.industryid = Industries.id\
+        where AllContactsInLists.listid IN ( '+(req.body.listids as Number[]).map(e=> "?").join(",")+')\
+        ORDER by AllContactsInLists.listid',[...(req.body.listids as Number[])]).then(([result, fields]) =>{
+         
+          //let pomres: Map<Number,any[]> = new Map<Number, any[]>(); 
+          console.log([(req.body.listids as Number[]).join(", ")]);
+          let pomres: {[id:number]: any[]} = {};
+          (result as []).forEach((e:any)=>
+            {
+              if(!pomres[e.listid])
+              pomres[e.listid] =  [];
+              pomres[e.listid].push(e);
+            });
+
+            console.log(pomres);
+            res.send(pomres);
+
+      }).catch(err=> {throw err;});
+      }
+     else {
+            res.status(399).send("[/getContactsByListIds1] Nisu unesena sva polja.");
           }
     });
 
@@ -169,7 +213,6 @@ class WebApp {
             {
               if(!pomres[e.listid])
               pomres[e.listid] =  [];
-
               pomres[e.listid].push(e);
             });
 
@@ -179,27 +222,85 @@ class WebApp {
       }).catch(err=> {throw err;});
       }
      else {
-            res.status(399).send("[/getContactsByListId] Nisu unesena sva polja.");
+            res.status(399).send("[/getContactsByListIds] Nisu unesena sva polja.");
           }
     });
 
+    app.post("/getIndividualSearchResults", async (req: Request, res: Response): Promise<void> => {
+      if (req.body.userid && req.body.limit!= null &&  req.body.offset != null && req.body.netnew != null &&  req.body.domainName != null )
+      {
+        let map: (string | Number)[] = [];
+        let wheremap: (string | Number)[] = [];
 
-    
+      let wherequery: string = "";
+      let query: string = "SELECT  AllContacts.*, Locations.name as location, Industries.name as industry,\
+      (AllContacts.email IN (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
+        INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
+        WHERE Users.id = ?)) as saved\
+        FROM AllContacts\
+        LEFT  JOIN Locations on AllContacts.locationid = Locations.id\
+        LEFT  JOIN Industries on AllContacts.industryid = Industries.id";
+      map.push(req.body.userid);
+
+      wherequery = " WHERE email LIKE ? OR weblink LIKE ? AND ";
+      wheremap.push("%"+req.body.domainName+"%");
+      wheremap.push("%"+req.body.domainName+"%");
+
+      if (req.body.netnew == 1) {
+        wherequery+=" AllContacts.id NOT IN \
+                (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
+                INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
+                WHERE Users.id = ?) AND ";
+              wheremap.push(req.body.userid);
+      }
+      wherequery += " 1 ";
+
+      query += wherequery;
+      map = [...map, ...wheremap];
+
+     query = query.concat(" ORDER BY ");
+     if(req.body.sortsize != null)
+     {
+      query = query.concat(" AllContacts.companysize ");
+      query = query.concat(req.body.sortsize == true? " ASC, ":" DESC, ");
+     }
+     if(req.body.sortcompany != null)
+     {
+      query = query.concat(" AllContacts.companyname ");
+      query = query.concat(req.body.sortcompany == true? " ASC, ":" DESC, ");
+     }
+     if(req.body.sortcontact != null)
+     {
+      query = query.concat(" AllContacts.firstname ");
+      query = query.concat(req.body.sortcontact == true? " ASC, ":" DESC, ");
+     }
+      query = query.concat(" AllContacts.id DESC LIMIT ? OFFSET ? ");
+
+      map.push(req.body.limit);
+      map.push(req.body.offset);
+
+     console.log(query);
+     console.log(map);
+     mySqlWeb.execute(query,[...map]).then(([result, fields]) =>{
+     res.send({contacts: result})
+     }).catch(err=> {throw err;});
+      }
+     else {
+            res.status(399).send("[/getIndividualSearchResults] Nisu unesena sva polja.");
+          }
+    });
+
     app.post("/getSearchResults2", async (req: Request, res: Response): Promise<void> => {
       if (req.body.userid && req.body.limit!= null &&  req.body.offset != null && req.body.netnew != null )
       {
       
         let map:String | Number[] = [];
-       // let dmap:String | Number[] = [];
-
-        console.log(map);
-      let wherequery: string = "";
-      let query: string = "SELECT  Contacts.*, Locations.name as location, Industries.name as industry,\
-      (Contacts.email IN (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
-        INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
-        WHERE Users.id = ?)) as saved, \
-       0+";
-       //map.push(req.body.userid);
+        let wherequery: string = " WHERE ";
+        let query: string = "SELECT  Contacts.*, Locations.name as location, Industries.name as industry,\
+        (Contacts.email IN (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
+          INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
+          WHERE Users.id = ?)) as saved, \
+        0+";
 
       if(req.body.companyName != null)
       {
@@ -225,18 +326,17 @@ class WebApp {
         wherequery += "MATCH(jobtitle) AGAINST (? IN BOOLEAN MODE) AND ";
         map.push(req.body.jobTitle);
       }
+
       const duplicatemap = [req.body.userid, ...map, ...map];
 
       if(req.body.locations && (req.body.locations as Number[]).length >0 )
       {
         duplicatemap.push(...(req.body.locations as Number[]));
-        map.push(...(req.body.locations as Number[]));
         wherequery+="Contacts.locationid IN ("+ (req.body.locations as Number[]).map(e=> "?").join(",") +") AND ";
       }
       if(req.body.industries  && (req.body.industries as Number[]).length >0 )
       {
         duplicatemap.push(...(req.body.industries as Number[]));
-        map.push(...(req.body.industries as Number[]));
         wherequery+= "Contacts.industryid IN ("+(req.body.industries as Number[]).map(e=> "?").join(",") + ") AND ";
       }
 
@@ -245,21 +345,18 @@ class WebApp {
                 (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
                 INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
                 WHERE Users.id = ?) AND ";
-
               duplicatemap.push(req.body.userid);
-              map.push(req.body.userid);
       }
-
+      
+      wherequery += " 1 ";
 
       query+=" 0 as relevant\
       FROM    Contacts\
       INNER  JOIN Locations on Contacts.locationid = Locations.id\
-      LEFT  JOIN Industries on Contacts.industryid = Industries.id\
-      WHERE ";
+      LEFT  JOIN Industries on Contacts.industryid = Industries.id";
+      
       query+= wherequery;
-      // dupliciranje
-      query += " 1 ";
-     // if(&& req.body.sortsize && req.body.sortcontact && req.body.sortcompany)
+
      query = query.concat("ORDER BY ");
      if(req.body.sortsize != null)
      {
@@ -277,45 +374,24 @@ class WebApp {
       query = query.concat(req.body.sortcontact == true? " ASC, ":" DESC, ");
      }
       query = query.concat(" relevant, Contacts.id DESC LIMIT ? OFFSET ? ");
-   //  query += "relevant,Contacts.id DESC LIMIT ? OFFSET ? ";
-
-    //  query = query.concat("ORDER BY relevant,Contacts.id DESC LIMIT ? OFFSET ? ");
-
       
       duplicatemap.push(req.body.limit);
       duplicatemap.push(req.body.offset);
-        console.log(query);
-        console.log(duplicatemap);
-        console.log(map);
-     
 
-
-
-
-        
-
-      if(req.body.offset == 0)
-      {
-       mySqlWeb.execute("SELECT COUNT(*) as numberofrows From Contacts WHERE "+wherequery+ " 1 " ,[...map]).then(([topresult, fields]:any) =>{
-          mySqlWeb.execute(query,duplicatemap).then(([result, fields]) =>{
-            //console.log(result);
-         //   res.send(({...result,numberofrows:topresult[0].numberofrows}));
-         res.send({contacts: result, numberofrows:topresult[0].numberofrows})
-         }).catch(err=> {throw err;});
-       }).catch(err=> {throw err;});
-      }
-      else
-      {
-        mySqlWeb.execute(query,duplicatemap).then(([result,fields]) =>{
-
+      mySqlWeb.execute(query,duplicatemap).then(([result,fields]) =>{
+        if((result as []).length > 0)
+        {
           res.send({contacts:result});
-       }).catch(err=> {throw err;});
-      }
-
+        }
+        else
+        {
+          //api
+        }
+      }).catch(err=> {throw err;});
        
       }
      else {
-            res.status(399).send("[/getSearchResults] Nisu unesena sva polja.");
+            res.status(399).send("[/getSearchResults2] Nisu unesena sva polja.");
           }
     });
 
@@ -612,7 +688,8 @@ class WebApp {
     app.post("/addContactsToUserContactsList",
       async (req: Request, res: Response): Promise<void> => {
         if (
-          req.body.listid &&
+          req.body.userid != null &&
+          req.body.listid != null &&
           req.body.contactids &&
           req.body.lastmodified
         ) {
@@ -627,6 +704,10 @@ class WebApp {
               await conn.beginTransaction();
               await conn.execute(query,params.flat(1));
               await conn.execute("UPDATE `UserContactLists` SET `lastmodified`= ? WHERE id = ?", [req.body.lastmodified, req.body.listid]);
+              if(req.body.tokens != null)
+              {
+                await conn.execute("UPDATE `Users` SET  tokens = tokens - ? where id = ?",[req.body.tokens, req.body.userid]);
+              }
               await conn.commit();
               res.send("Uspesno dodati kontakti u listu."+req.body.lastmodified);
 
@@ -705,20 +786,21 @@ app.put("/updateUserTokens",
 //#endregion
 
 //#region Remove Functions
-    app.post("/removeContactsFromUserContactList",
+    app.delete("/removeContactsFromUserContactsList",
       async (req: Request, res: Response): Promise<void> => {
         if (
-          req.body.userid &&
           req.body.listid &&
           req.body.contactids
         ) {
-          let query:string = "DELETE FROM `ListJoinContacts` WHERE `listid` = ? AND `contactid` IN ("+(req.body.contactids as Number[]).map(el=> "?").join(", ")+")";
+          const instr:string = (req.body.contactids as Number[]).map(el=> "?").join(", ");
+
+          let query:string = "DELETE FROM `ListJoinContacts` WHERE `listid` = ? AND (`contactid` IN ("+instr+") OR `apicontactid` IN ("+instr+"))";
           
           mySqlWeb.execute(query, [req.body.listid, ...(req.body.contactids as Number[])]).then(([result, fields]) =>{
            res.send(result);
           }).catch(err=> {throw err;});
         } else {
-          res.status(399).send("[/removeContactsFromUserContactList] Nisu unesena sva polja.");
+          res.status(399).send("[/removeContactsFromUserContactsList] Nisu unesena sva polja.");
         }
       }
     );
