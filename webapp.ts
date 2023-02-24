@@ -245,11 +245,13 @@ class WebApp {
         LEFT  JOIN Industries on AllContacts.industryid = Industries.id";
       map.push(req.body.userid);
 
-      wherequery = " WHERE email LIKE ? OR weblink LIKE ? AND ";
+      wherequery = " WHERE (email LIKE ? OR weblink LIKE ?) AND ";
       wheremap.push("%"+req.body.domainName+"%");
       wheremap.push("%"+req.body.domainName+"%");
+        console.log(req.body.netnew);
 
       if (req.body.netnew == 1) {
+        console.log("*--------------------------");
         wherequery+=" AllContacts.email NOT IN \
                 (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
                 INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
@@ -299,9 +301,11 @@ class WebApp {
           res.send({contacts:results});//TODO treba da se doda provera za datum.
 
           const apicontacts = (results as []).filter((el:any)=> el.contacttype == 1);
-          await conn.execute("UPDATE `APIContacts` SET `popularity`= popularity+1 WHERE id IN("+apicontacts.map(el=>"?").join(",")+")", apicontacts.map((el: any)=> el.id));
+          if(apicontacts.length>0)
+          {
+            await conn.execute("UPDATE `APIContacts` SET `popularity`= popularity+1 WHERE id IN("+apicontacts.map(el=>"?").join(",")+")", apicontacts.map((el: any)=> el.id));
+          }
           await conn.commit();
-        
         }
         else
         {
