@@ -250,7 +250,7 @@ class WebApp {
       wheremap.push("%"+req.body.domainName+"%");
 
       if (req.body.netnew == 1) {
-        wherequery+=" AllContacts.id NOT IN \
+        wherequery+=" AllContacts.email NOT IN \
                 (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
                 INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
                 WHERE Users.id = ?) AND ";
@@ -284,17 +284,58 @@ class WebApp {
 
      console.log(query);
      console.log(map);
-     mySqlWeb.execute(query,[...map]).then(([result, fields]) =>{
-      if((result as []).length > 0)
-      {
-        res.send({contacts:result});
+     const limit = 10;
+     const offset = 0;
+
+     let conn:PoolConnection | null = null;
+     try {
+        conn = await mySqlWeb.getConnection();
+        await conn.beginTransaction();
+        const [results, fields] = await conn.execute(query,[...map]);
+
+        if((results as []).length > 0)
+        {
+          console.log("--------------------------Baza-------------------------------");
+          res.send({contacts:results});//TODO treba da se doda provera za datum.
+
+          const apicontacts = (results as []).filter((el:any)=> el.contacttype == 1);
+          await conn.execute("UPDATE `APIContacts` SET `popularity`= popularity+1 WHERE id IN("+apicontacts.map(el=>"?").join(",")+")", apicontacts.map((el: any)=> el.id));
+          await conn.commit();
+        
+        }
+        else
+        {
+          console.log("--------------------------API-------------------------------");
+          const response = await fetch(`https://api.snov.io/v2/domain-emails-with-info?access_token=${this.snowioAccessToken}&domain=${req.body.domainName}&type=all&limit=${limit}&lastId=${offset}`, {
+            method: 'get'
+          });
+          const data:any = await response.json();
+        
+
+          if((data.emails as []).length > 0)
+          {
+            const insert = (data.emails as []).map((el: any)=> [el.domain, el.firstName, el.lastName, el.companyName, el.email, el.position, el.sourcePage, 0, new Date().toISOString()].map(el=> el!=undefined? el: null));
+            console.log(insert);
+            await conn.execute("INSERT INTO `APIContacts`( `domen`, `firstname`, `lastname`, `companyname`, `email`, `jobtitle`, `inlink`, `popularity`, `createddate`) VALUES "+(data.emails as []).map(el=>"(?,?,?,?,?,?,?,?,?)").join(", "),insert.flat(1));
+            const [results, fields] = await conn.execute(query,[...map]);
+            await conn.commit();
+            res.send({contacts:results});
+          }
+          else
+          {
+            await conn.commit();
+            res.send({contacts:[]});
+          }
+          //api
+        }
+      } catch (error) {
+          if (conn) await conn.rollback();
+          throw error;
       }
-      else
-      {
-        //api
+      finally{
+          if (conn) await conn.release();
       }
-    
-     }).catch(err=> {throw err;});
+
       }
      else {
             res.status(399).send("[/getIndividualSearchResults] Nisu unesena sva polja.");
@@ -352,7 +393,7 @@ class WebApp {
       }
 
       if (req.body.netnew == 1) {
-              wherequery+=" Contacts.id NOT IN \
+              wherequery+=" Contacts.email NOT IN \
                 (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
                 INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
                 WHERE Users.id = ?) AND ";
@@ -805,7 +846,7 @@ app.put("/updateUserTokens",
 
           let query:string = "DELETE FROM `ListJoinContacts` WHERE `listid` = ? AND (`contactid` IN ("+instr+") OR `apicontactid` IN ("+instr+"))";
           
-          mySqlWeb.execute(query, [req.body.listid, ...(req.body.contactids as Number[])]).then(([result, fields]) =>{
+          mySqlWeb.execute(query, [req.body.listid, ...(req.body.contactids as Number[]), ...(req.body.contactids as Number[])]).then(([result, fields]) =>{
            res.send(result);
           }).catch(err=> {throw err;});
         } else {

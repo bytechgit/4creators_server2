@@ -195,7 +195,7 @@ class WebApp {
                 wheremap.push("%" + req.body.domainName + "%");
                 wheremap.push("%" + req.body.domainName + "%");
                 if (req.body.netnew == 1) {
-                    wherequery += " AllContacts.id NOT IN \
+                    wherequery += " AllContacts.email NOT IN \
                 (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
                 INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
                 WHERE Users.id = ?) AND ";
@@ -222,14 +222,50 @@ class WebApp {
                 map.push(req.body.offset);
                 console.log(query);
                 console.log(map);
-                mySqlWeb.execute(query, [...map]).then(([result, fields]) => {
-                    if (result.length > 0) {
-                        res.send({ contacts: result });
+                const limit = 10;
+                const offset = 0;
+                let conn = null;
+                try {
+                    conn = await mySqlWeb.getConnection();
+                    await conn.beginTransaction();
+                    const [results, fields] = await conn.execute(query, [...map]);
+                    if (results.length > 0) {
+                        console.log("--------------------------Baza-------------------------------");
+                        res.send({ contacts: results }); //TODO treba da se doda provera za datum.
+                        const apicontacts = results.filter((el) => el.contacttype == 1);
+                        await conn.execute("UPDATE `APIContacts` SET `popularity`= popularity+1 WHERE id IN(" + apicontacts.map(el => "?").join(",") + ")", apicontacts.map((el) => el.id));
+                        await conn.commit();
                     }
                     else {
+                        console.log("--------------------------API-------------------------------");
+                        const response = await fetch(`https://api.snov.io/v2/domain-emails-with-info?access_token=${this.snowioAccessToken}&domain=${req.body.domainName}&type=all&limit=${limit}&lastId=${offset}`, {
+                            method: 'get'
+                        });
+                        const data = await response.json();
+                        if (data.emails.length > 0) {
+                            const insert = data.emails.map((el) => [el.domain, el.firstName, el.lastName, el.companyName, el.email, el.position, el.sourcePage, 0, new Date().toISOString()].map(el => el != undefined ? el : null));
+                            console.log(insert);
+                            await conn.execute("INSERT INTO `APIContacts`( `domen`, `firstname`, `lastname`, `companyname`, `email`, `jobtitle`, `inlink`, `popularity`, `createddate`) VALUES " + data.emails.map(el => "(?,?,?,?,?,?,?,?,?)").join(", "), insert.flat(1));
+                            const [results, fields] = await conn.execute(query, [...map]);
+                            await conn.commit();
+                            res.send({ contacts: results });
+                        }
+                        else {
+                            await conn.commit();
+                            res.send({ contacts: [] });
+                        }
                         //api
                     }
-                }).catch(err => { throw err; });
+                }
+                catch (error) {
+                    if (conn)
+                        await conn.rollback();
+                    throw error;
+                }
+                finally {
+                    if (conn)
+                        await conn.release();
+                }
             }
             else {
                 res.status(399).send("[/getIndividualSearchResults] Nisu unesena sva polja.");
@@ -274,7 +310,7 @@ class WebApp {
                     wherequery += "Contacts.industryid IN (" + req.body.industries.map(e => "?").join(",") + ") AND ";
                 }
                 if (req.body.netnew == 1) {
-                    wherequery += " Contacts.id NOT IN \
+                    wherequery += " Contacts.email NOT IN \
                 (SELECT DISTINCT AllContactsInLists.email FROM Users INNER JOIN UserContactLists ON Users.id = UserContactLists.userid\
                 INNER JOIN AllContactsInLists on UserContactLists.id = AllContactsInLists.listid\
                 WHERE Users.id = ?) AND ";
@@ -635,7 +671,7 @@ class WebApp {
                 req.body.contactids) {
                 const instr = req.body.contactids.map(el => "?").join(", ");
                 let query = "DELETE FROM `ListJoinContacts` WHERE `listid` = ? AND (`contactid` IN (" + instr + ") OR `apicontactid` IN (" + instr + "))";
-                mySqlWeb.execute(query, [req.body.listid, ...req.body.contactids]).then(([result, fields]) => {
+                mySqlWeb.execute(query, [req.body.listid, ...req.body.contactids, ...req.body.contactids]).then(([result, fields]) => {
                     res.send(result);
                 }).catch(err => { throw err; });
             }
