@@ -120,20 +120,20 @@ class WebApp {
     });
 
 
-    app.get("/getAllContactsLists", async (req: Request, res: Response): Promise<void> => {
-      if (req.query.userid)
-      {
-        mySqlWeb.execute('SELECT ListJoinContacts.listid,Contacts.* FROM UserContactLists\
-        INNER JOIN ListJoinContacts on UserContactLists.id = ListJoinContacts.listid\
-        INNER JOIN Contacts on ListJoinContacts.contactid = Contacts.id\
-        WHERE userid = ?',[req.query.userid]).then(([result, fields]) =>{
-         res.send(result);
-      }).catch(err=> {throw err;});
-      }
-     else {
-            res.status(399).send("[/getContactListAll] Nisu unesena sva polja.");
-          }
-    });
+    // app.get("/getAllContactsLists", async (req: Request, res: Response): Promise<void> => {
+    //   if (req.query.userid)
+    //   {
+    //     mySqlWeb.execute('SELECT ListJoinContacts.listid,Contacts.* FROM UserContactLists\
+    //     INNER JOIN ListJoinContacts on UserContactLists.id = ListJoinContacts.listid\
+    //     INNER JOIN Contacts on ListJoinContacts.contactid = Contacts.id\
+    //     WHERE userid = ?',[req.query.userid]).then(([result, fields]) =>{
+    //      res.send(result);
+    //   }).catch(err=> {throw err;});
+    //   }
+    //  else {
+    //         res.status(399).send("[/getContactListAll] Nisu unesena sva polja.");
+    //       }
+    // });
 
 
     app.get("/getContactsByListId1", async (req: Request, res: Response): Promise<void> => {
@@ -170,7 +170,7 @@ class WebApp {
     app.post("/getContactsByListIds1", async (req: Request, res: Response): Promise<void> => {
       if (req.body.listids )
       {
-        mySqlWeb.execute('SELECT AllContactsInLists.contacttype, AllContactsInLists.id, AllContactsInLists.firstname, AllContactsInLists.lastname, AllContactsInLists.email, AllContactsInLists.companyname, AllContactsInLists.companysize, AllContactsInLists.jobtitle,Locations.name as location, Industries.name as industry,ListJoinContacts.listid FROM AllContactsInLists\
+        mySqlWeb.execute('SELECT AllContactsInLists.contacttype, AllContactsInLists.id, AllContactsInLists.firstname, AllContactsInLists.lastname, AllContactsInLists.email, AllContactsInLists.companyname, AllContactsInLists.companysize, AllContactsInLists.jobtitle,Locations.name as location, Industries.name as industry,AllContactsInLists.listid FROM AllContactsInLists\
         LEFT JOIN Locations ON AllContactsInLists.locationid = Locations.id\
         LEFT JOIN Industries ON AllContactsInLists.industryid = Industries.id\
         where AllContactsInLists.listid IN ( '+(req.body.listids as Number[]).map(e=> "?").join(",")+')\
@@ -225,6 +225,9 @@ class WebApp {
             res.status(399).send("[/getContactsByListIds] Nisu unesena sva polja.");
           }
     });
+
+
+
 
     app.post("/getIndividualSearchResults", async (req: Request, res: Response): Promise<void> => {
       if (req.body.userid && req.body.limit!= null &&  req.body.offset != null && req.body.netnew != null &&  req.body.domainName != null )
@@ -282,7 +285,15 @@ class WebApp {
      console.log(query);
      console.log(map);
      mySqlWeb.execute(query,[...map]).then(([result, fields]) =>{
-     res.send({contacts: result})
+      if((result as []).length > 0)
+      {
+        res.send({contacts:result});
+      }
+      else
+      {
+        //api
+      }
+    
      }).catch(err=> {throw err;});
       }
      else {
@@ -379,14 +390,8 @@ class WebApp {
       duplicatemap.push(req.body.offset);
 
       mySqlWeb.execute(query,duplicatemap).then(([result,fields]) =>{
-        if((result as []).length > 0)
-        {
           res.send({contacts:result});
-        }
-        else
-        {
-          //api
-        }
+     
       }).catch(err=> {throw err;});
        
       }
@@ -648,6 +653,7 @@ class WebApp {
         if (
           req.body.userid &&
           req.body.listname &&
+          req.body.contacttypes && 
           req.body.lastmodified
         ) {
           let conn:PoolConnection | null = null;
@@ -659,10 +665,11 @@ class WebApp {
             //console.log(result[0]);
             if(req.body.contactids)
             {
+              const contacttypeslist: [] = req.body.contacttypes as [];
               let query:string = "INSERT INTO `ListJoinContacts`(`listid`, `contactid`) VALUES "+ (req.body.contactids as Number[]).map(e=>"(?,?)").join(",");
-              const params:Number[][] = (req.body.contactids as Number[]).map(id=> {
-              return [result[0].listid as Number, id];
-              });
+              const params:(Number | null)[][] = (req.body.contactids as Number[]).map((id,index)=> {
+                return [req.body.listid as Number, contacttypeslist[index] == 0? id: null, contacttypeslist[index] == 0? null: id];
+              })
              // console.log(params.flat(1));
              await conn.execute(query,params.flat(1));
             }
@@ -691,11 +698,13 @@ class WebApp {
           req.body.userid != null &&
           req.body.listid != null &&
           req.body.contactids &&
+          req.body.contacttypes && 
           req.body.lastmodified
         ) {
-          let query:string = "INSERT INTO `ListJoinContacts`(`listid`, `contactid`) VALUES " + (req.body.contactids as Number[]).map(e=>"(?,?)").join(",");
-          const params:Number[][] = (req.body.contactids as Number[]).map(id=> {
-            return [req.body.listid as Number, id];
+          const contacttypeslist: [] = req.body.contacttypes as [];
+          let query:string = "INSERT INTO `ListJoinContacts`(`listid`, `contactid`, `apicontactid`) VALUES " + (req.body.contactids as Number[]).map(e=>"(?,?,?)").join(",");
+          const params:(Number | null)[][] = (req.body.contactids as Number[]).map((id,index)=> {
+            return [req.body.listid as Number, contacttypeslist[index] == 0? id: null, contacttypeslist[index] == 0? null: id];
           })
 
           let conn:PoolConnection | null = null;

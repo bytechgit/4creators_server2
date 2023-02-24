@@ -90,19 +90,20 @@ class WebApp {
                 res.status(399).send("[/getUserContactsLists] Nisu unesena sva polja.");
             }
         });
-        app.get("/getAllContactsLists", async (req, res) => {
-            if (req.query.userid) {
-                mySqlWeb.execute('SELECT ListJoinContacts.listid,Contacts.* FROM UserContactLists\
-        INNER JOIN ListJoinContacts on UserContactLists.id = ListJoinContacts.listid\
-        INNER JOIN Contacts on ListJoinContacts.contactid = Contacts.id\
-        WHERE userid = ?', [req.query.userid]).then(([result, fields]) => {
-                    res.send(result);
-                }).catch(err => { throw err; });
-            }
-            else {
-                res.status(399).send("[/getContactListAll] Nisu unesena sva polja.");
-            }
-        });
+        // app.get("/getAllContactsLists", async (req: Request, res: Response): Promise<void> => {
+        //   if (req.query.userid)
+        //   {
+        //     mySqlWeb.execute('SELECT ListJoinContacts.listid,Contacts.* FROM UserContactLists\
+        //     INNER JOIN ListJoinContacts on UserContactLists.id = ListJoinContacts.listid\
+        //     INNER JOIN Contacts on ListJoinContacts.contactid = Contacts.id\
+        //     WHERE userid = ?',[req.query.userid]).then(([result, fields]) =>{
+        //      res.send(result);
+        //   }).catch(err=> {throw err;});
+        //   }
+        //  else {
+        //         res.status(399).send("[/getContactListAll] Nisu unesena sva polja.");
+        //       }
+        // });
         app.get("/getContactsByListId1", async (req, res) => {
             if (req.query.listid) {
                 mySqlWeb.execute('SELECT AllContactsInLists.contacttype, AllContactsInLists.id, AllContactsInLists.firstname, AllContactsInLists.lastname, AllContactsInLists.email, AllContactsInLists.companyname, AllContactsInLists.companysize, AllContactsInLists.jobtitle, Locations.name as location, Industries.name as industry FROM AllContactsInLists\
@@ -132,7 +133,7 @@ class WebApp {
         });
         app.post("/getContactsByListIds1", async (req, res) => {
             if (req.body.listids) {
-                mySqlWeb.execute('SELECT AllContactsInLists.contacttype, AllContactsInLists.id, AllContactsInLists.firstname, AllContactsInLists.lastname, AllContactsInLists.email, AllContactsInLists.companyname, AllContactsInLists.companysize, AllContactsInLists.jobtitle,Locations.name as location, Industries.name as industry,ListJoinContacts.listid FROM AllContactsInLists\
+                mySqlWeb.execute('SELECT AllContactsInLists.contacttype, AllContactsInLists.id, AllContactsInLists.firstname, AllContactsInLists.lastname, AllContactsInLists.email, AllContactsInLists.companyname, AllContactsInLists.companysize, AllContactsInLists.jobtitle,Locations.name as location, Industries.name as industry,AllContactsInLists.listid FROM AllContactsInLists\
         LEFT JOIN Locations ON AllContactsInLists.locationid = Locations.id\
         LEFT JOIN Industries ON AllContactsInLists.industryid = Industries.id\
         where AllContactsInLists.listid IN ( ' + req.body.listids.map(e => "?").join(",") + ')\
@@ -222,7 +223,12 @@ class WebApp {
                 console.log(query);
                 console.log(map);
                 mySqlWeb.execute(query, [...map]).then(([result, fields]) => {
-                    res.send({ contacts: result });
+                    if (result.length > 0) {
+                        res.send({ contacts: result });
+                    }
+                    else {
+                        //api
+                    }
                 }).catch(err => { throw err; });
             }
             else {
@@ -297,12 +303,7 @@ class WebApp {
                 duplicatemap.push(req.body.limit);
                 duplicatemap.push(req.body.offset);
                 mySqlWeb.execute(query, duplicatemap).then(([result, fields]) => {
-                    if (result.length > 0) {
-                        res.send({ contacts: result });
-                    }
-                    else {
-                        //api
-                    }
+                    res.send({ contacts: result });
                 }).catch(err => { throw err; });
             }
             else {
@@ -505,6 +506,7 @@ class WebApp {
         app.post("/createUserContactsList", async (req, res) => {
             if (req.body.userid &&
                 req.body.listname &&
+                req.body.contacttypes &&
                 req.body.lastmodified) {
                 let conn = null;
                 try {
@@ -514,9 +516,10 @@ class WebApp {
                     const [result, fields] = await conn.execute('SELECT LAST_INSERT_ID() as listid', []);
                     //console.log(result[0]);
                     if (req.body.contactids) {
+                        const contacttypeslist = req.body.contacttypes;
                         let query = "INSERT INTO `ListJoinContacts`(`listid`, `contactid`) VALUES " + req.body.contactids.map(e => "(?,?)").join(",");
-                        const params = req.body.contactids.map(id => {
-                            return [result[0].listid, id];
+                        const params = req.body.contactids.map((id, index) => {
+                            return [req.body.listid, contacttypeslist[index] == 0 ? id : null, contacttypeslist[index] == 0 ? null : id];
                         });
                         // console.log(params.flat(1));
                         await conn.execute(query, params.flat(1));
@@ -545,10 +548,12 @@ class WebApp {
             if (req.body.userid != null &&
                 req.body.listid != null &&
                 req.body.contactids &&
+                req.body.contacttypes &&
                 req.body.lastmodified) {
-                let query = "INSERT INTO `ListJoinContacts`(`listid`, `contactid`) VALUES " + req.body.contactids.map(e => "(?,?)").join(",");
-                const params = req.body.contactids.map(id => {
-                    return [req.body.listid, id];
+                const contacttypeslist = req.body.contacttypes;
+                let query = "INSERT INTO `ListJoinContacts`(`listid`, `contactid`, `apicontactid`) VALUES " + req.body.contactids.map(e => "(?,?,?)").join(",");
+                const params = req.body.contactids.map((id, index) => {
+                    return [req.body.listid, contacttypeslist[index] == 0 ? id : null, contacttypeslist[index] == 0 ? null : id];
                 });
                 let conn = null;
                 try {
